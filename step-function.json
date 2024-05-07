@@ -1,0 +1,84 @@
+{
+    "Comment": "SF for airlines data ingestion.",
+    "StartAt": "Start Crawler",
+    "States": {
+      "Start Crawler": {
+        "Type": "Task",
+        "Next": "Get Crawler Status",
+        "Parameters": {
+          "Name": "s3-movies-data"
+        },
+        "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler"
+      },
+      "Get Crawler Status": {
+        "Type": "Task",
+        "Next": "Is Crawler Running?",
+        "Parameters": {
+          "Name": "s3-movies-data"
+        },
+        "Resource": "arn:aws:states:::aws-sdk:glue:getCrawler"
+      },
+      "Is Crawler Running?": {
+        "Type": "Choice",
+        "Choices": [
+          {
+            "Variable": "$.Crawler.State",
+            "StringMatches": "RUNNING",
+            "Next": "Wait"
+          }
+        ],
+        "Default": "Start Glue Job"
+      },
+      "Wait": {
+        "Type": "Wait",
+        "Seconds": 30,
+        "Next": "Get Crawler Status"
+      },
+      "Start Glue Job": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::glue:startJobRun.sync",
+        "Parameters": {
+          "JobName": "movies-data-ingestion-vetl"
+        },
+        "Next": "Has Job Finished?",
+        "Catch": [
+          {
+            "ErrorEquals": [
+              "States.TaskFailed"
+            ],
+            "Next": "Failure Notification",
+            "ResultPath": null
+          }
+        ]
+      },
+      "Has Job Finished?": {
+        "Type": "Choice",
+        "Choices": [
+          {
+            "Variable": "$.JobRunState",
+            "StringMatches": "SUCCEEDED",
+            "Next": "Success Notification"
+          }
+        ],
+        "Default": "Failure Notification"
+      },
+      "Failure Notification": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "Message": "Movies Data Ingestion Pipeline has failed.",
+          "TopicArn": "arn:aws:sns:us-east-1:654654491149:sns-email"
+        },
+        "End": true
+      },
+      "Success Notification": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "Message": "Movies Data Ingestion Pipeline was successful.",
+          "TopicArn": "arn:aws:sns:us-east-1:654654491149:sns-email"
+        },
+        "End": true
+      }
+    }
+  }
